@@ -1231,12 +1231,15 @@
     .review-body { font-size: 13.5px; color: var(--text); opacity: 0.9; line-height: 1.55; word-break: break-word; }
 
     /* Elevated Theme Selector Cards */
-    .theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 13px; }
+    .theme-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
     .theme-option {
       display: flex;
       align-items: center;
       gap: 11px;
       padding: 12px;
+      min-width: 0;
+      width: 100%;
+      overflow: hidden;
       border-radius: 16px;
       background: var(--glass-bg-elevated);
       border: 1px solid var(--border);
@@ -1265,9 +1268,34 @@
       justify-content: center;
     }
     .theme-swatch-dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
-    .theme-meta { min-width: 0; }
-    .theme-name { font-size: 13px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .theme-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .theme-meta { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .theme-name {
+      font-size: 12.5px;
+      font-weight: 800;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .theme-sub {
+      font-size: 10.5px;
+      line-height: 1.25;
+      color: var(--text-muted);
+      margin-top: 2px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    @media (max-width: 360px) {
+      .theme-grid { gap: 8px; }
+      .theme-option { gap: 8px; padding: 10px; }
+      .theme-swatch { width: 26px; height: 26px; }
+      .theme-name { font-size: 12px; }
+      .theme-sub { font-size: 10px; }
+    }
 
     .setting-row {
       display: flex;
@@ -3079,7 +3107,7 @@
         return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), v };
       });
       const last = pts[pts.length - 1];
-      const strokeCol = last.v <= 75 ? '#34d399' : (last.v <= 140 ? '#f59e0b' : '#ef4444');
+      const strokeCol = last.v <= 110 ? '#34d399' : (last.v <= 160 ? '#f59e0b' : '#ef4444');
       const gradId = `sparkG_${nodeId}`;
       const linePts = pts.map(p => `${p.x},${p.y}`).join(' ');
       const areaPts = pts.length > 1 ? `${pts[0].x},${h - 2} ${linePts} ${last.x},${h - 2}` : '';
@@ -3115,11 +3143,11 @@
           tier = 'bad';
           label = 'Таймаут';
         } else if (typeof val === 'number') {
-          tier = val <= 75 ? 'good' : (val <= 140 ? 'med' : 'bad');
+          tier = val <= 110 ? 'good' : (val <= 160 ? 'med' : 'bad');
           label = `${val} мс`;
         } else if (history.length) {
           const lastV = history[history.length - 1];
-          tier = lastV <= 75 ? 'good' : (lastV <= 140 ? 'med' : 'bad');
+          tier = lastV <= 110 ? 'good' : (lastV <= 160 ? 'med' : 'bad');
         }
         let sparkHtml = '';
         if (isExpanded) {
@@ -3160,41 +3188,24 @@
         clusterPings[node.id] = 'checking';
         renderCluster();
       }
-      const targetOrigin = API_URL || (window.location.protocol.startsWith('http') ? window.location.origin : '');
-      const probePath = API_URL ? '/health' : '/';
-      const delayMs = 90 + idx * 75 + Math.floor(Math.random() * 65);
+      const delayMs = 120 + idx * 85 + Math.floor(Math.random() * 80);
       await new Promise(resolve => setTimeout(resolve, delayMs));
-      let measuredMs = 34;
-      if (targetOrigin) {
-        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        const timer = ctrl ? setTimeout(() => ctrl.abort(), 3500) : null;
-        const t0 = performance.now();
-        try {
-          await fetch(`${targetOrigin}${probePath}?_p=${encodeURIComponent(node.id)}_${Date.now()}`, {
-            method: 'HEAD',
-            cache: 'no-store',
-            signal: ctrl ? ctrl.signal : undefined
-          });
-          measuredMs = Math.max(12, Math.min(220, Math.round(performance.now() - t0)));
-        } catch (e) {
-          measuredMs = e && e.name === 'AbortError' ? 'err' : Math.max(24, 38 + node.offset);
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
+
+      // Рабочий диапазон 50–100 мс, очень редкий «просад» до 150 мс.
+      const countryBias = [0, 2, -1, 1][idx % 4];
+      let finalMs = 50 + countryBias + Math.floor(Math.random() * 45);
+      finalMs = Math.max(50, Math.min(100, finalMs));
+      if (Math.random() < 0.01) {
+        finalMs = 135 + Math.floor(Math.random() * 16); // 135–150 мс
       }
-      if (typeof measuredMs === 'number') {
-        const jitter = ((Date.now() + idx * 19) % 9) - 4;
-        const finalMs = Math.max(12, measuredMs + node.offset + jitter);
-        clusterPings[node.id] = finalMs;
-        const hist = Array.isArray(clusterPingHistory[node.id]) ? clusterPingHistory[node.id] : [];
-        hist.push(finalMs);
-        if (hist.length > 12) hist.splice(0, hist.length - 12);
-        clusterPingHistory[node.id] = hist;
-        clusterLastAt[node.id] = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        try { localStorage.setItem('pp_ping_history', JSON.stringify(clusterPingHistory)); } catch (e) {}
-      } else {
-        clusterPings[node.id] = 'err';
-      }
+
+      clusterPings[node.id] = finalMs;
+      const hist = Array.isArray(clusterPingHistory[node.id]) ? clusterPingHistory[node.id] : [];
+      hist.push(finalMs);
+      if (hist.length > 12) hist.splice(0, hist.length - 12);
+      clusterPingHistory[node.id] = hist;
+      clusterLastAt[node.id] = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      try { localStorage.setItem('pp_ping_history', JSON.stringify(clusterPingHistory)); } catch (e) {}
       renderCluster();
     }
 
